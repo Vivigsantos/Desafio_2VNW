@@ -1,92 +1,83 @@
 from flask import Flask, request, jsonify
 import sqlite3
+from flask_cors import CORS
+
 
 app = Flask(__name__)
+CORS(app)
+# Função para inicializar o banco de dados SQLite.
 
 
 def init_db():
+    # Abre uma conexão com o banco de dados (ou cria o arquivo 'database.db' se não existir).
     with sqlite3.connect('database.db') as conn:
+        # Cria a tabela 'livros' caso ela não exista, contendo os campos: id, titulo, categoria, autor e imagem_url.
         conn.execute("""CREATE TABLE IF NOT EXISTS livros(
-                   id INTEGER PRIMARY KEY AUTOINCREMENT,
-                   titulo TEXT NOT NULL,
-                   categoria TEXT NOT NULL,
-                   autor TEXT NOT NULL,
-                   imagem_url TEXT NOT NULL
-                   )""")
-        print("Banco de dados criado!!")
+                     id INTEGER PRIMARY KEY AUTOINCREMENT,
+                     titulo TEXT NOT NULL,
+                     categoria TEXT NOT NULL,
+                     autor TEXT NOT NULL,
+                     imagem_url TEXT NOT NULL
+                     )
+                     """)
+        # Imprime uma mensagem no console indicando que o banco foi inicializado com sucesso.
+        print("Banco de dados inicializado com sucesso!!")
 
 
+# Chama a função para garantir que o banco de dados esteja pronto antes de iniciar o servidor.
 init_db()
+
+# Rota principal da aplicação que retorna uma página HTML.
 
 
 @app.route('/')
-def home_page():
-    return '<h2>Minha pagina com Flask</h2>'
+def homepage():
+    # Renderiza um template HTML chamado 'index.html'.
+    return render_template('index.html')
+
+# Rota para cadastrar um novo livro (doação), que aceita apenas requisições POST.
 
 
-@app.route('/doar', methods=['POST'])
+@app.route("/doar", methods=['POST'])
 def doar():
-
+    # Obtém os dados enviados na requisição no formato JSON.
     dados = request.get_json()
 
-    titulo = dados.get('titulo')
-    categoria = dados.get('categoria')
-    autor = dados.get('autor')
-    imagem_url = dados.get('imagem_url')
+    # Extrai os campos necessários do JSON recebido.
+    titulo = dados.get("titulo")
+    categoria = dados.get("categoria")
+    autor = dados.get("autor")
+    imagem_url = dados.get("imagem_url")
 
+    # Verifica se todos os campos foram preenchidos.
     if not all([titulo, categoria, autor, imagem_url]):
+        # Retorna um erro 400 (Bad Request) com uma mensagem de erro.
         return jsonify({'erro': 'Todos os campos são obrigatórios'}), 400
 
+    # Conecta ao banco de dados e insere as informações do livro.
     with sqlite3.connect('database.db') as conn:
-        conn.execute(f""" INSERT INTO livros (titulo, categoria, autor, imagem_url)
-                     VALUES (?,?,?,?) 
-                     """, (titulo, categoria, autor, imagem_url))
-
+        conn.execute(""" INSERT INTO livros (titulo, categoria, autor, imagem_url)
+                         VALUES(?,?,?,?)
+                         """, (titulo, categoria, autor, imagem_url))
+        # Confirma a transação para salvar as mudanças.
         conn.commit()
 
-        return jsonify({"mensagem": "Livro cadastrado com sucesso"}), 201
+        # Retorna uma mensagem de sucesso com o código 201 (Created).
+        return jsonify({'mensagem': 'Livros cadastrados com sucesso'}), 201
 
-# Rota para listar todos os livros cadastrados
+# Rota para listar todos os livros cadastrados, que aceita apenas requisições GET.
 
 
-# Agora vamos criar a rota que irá listar os livros cadastrados, ou seja a rota que irá receber o GET (requisição)
-@app.route("/livros", methods=["GET"])
+@app.route('/livros', methods=['GET'])
 def listar_livros():
+    # Conecta ao banco de dados e recupera todos os registros da tabela 'livros'.
     with sqlite3.connect('database.db') as conn:
         livros = conn.execute("SELECT * FROM livros").fetchall()
 
+    # Lista para armazenar os livros formatados.
     livros_formatados = []
 
-    for livro in livros:
-        dicionario_livros = {
-            "id": livro[0],
-            "titulo": livro[1],
-            "categoria": livro[2],
-            "autor": livro[3],
-            "imagem_url": livro[4]
-        }
-        livros_formatados.append(dicionario_livros)
-    return jsonify(livros_formatados)
-    """
-    Retorna todos os livros cadastrados no banco de dados.
-    """
-
-    # Como vamos puxar os livros que foram cadastrados no banco de dados, devemos refazer mais uma vez a conexão com o banco de dados
-    with sqlite3.connect("database.db") as conn:
-        # Esse comando é responsável por buscar todos os livros armazenados no banco de dados
-        livros = conn.execute("SELECT * FROM livros").fetchall()
-
-        # Vamos decompor e entender esses comandos
-        # conn.execute --> Como sabemos todo e qualquer comando que executamos no banco de dados precisamos do conn, ele é a ponte entre o banco de dados e o código Python
-        # SELECT * FROM LIVROS --> Consulte todas as informações da tabela Livros
-        # fetchall() --> É utilizado para buscar todos os dados retornados por uma consulta SQL e retorna-lós em formato de tupla
-
-        # Por mais que utilizamos o SELECT * FROM LIVROS, esse comando fará somente a consulta dos dados, para que realmente consigamos pegar esses dados formatados precisamos do fetchall() que os pegará e transformará eles em formato de tupla
-
-    # Criamos esse array, pois ele será responsável por armazenar todos os valores que puxarmos do nosso banco de dados
-    livros_formatados = []
-
-    # Esse loop for in junto com o dicionário_livros, será o responsável por passar por cada um dos valores das tuplas e com essas duas estruturas conseguiremos organizar os dados para que possamos retornar ao usuário cada um desses valores formatados corretamente
+    # Formata cada livro como um dicionário e adiciona à lista.
     for livro in livros:
         dicionario_livros = {
             "id": livro[0],
@@ -97,8 +88,31 @@ def listar_livros():
         }
         livros_formatados.append(dicionario_livros)
 
+    # Retorna a lista de livros no formato JSON.
     return jsonify(livros_formatados)
 
+# Rota para deletar um livro pelo ID, que aceita apenas requisições DELETE.
 
-if __name__ == '__main__':
+
+@app.route('/livros/<int:livro_id>', methods=['DELETE'])
+def deletar_livro(livro_id):
+    # Conecta ao banco de dados e cria um cursor para executar comandos SQL.
+    with sqlite3.connect('database.db') as conn:
+        cursor = conn.cursor()
+        # Executa a exclusão do livro com o ID especificado.
+        cursor.execute("DELETE FROM livros WHERE id = ?", (livro_id,))
+        # Confirma a transação para salvar as mudanças.
+        conn.commit()
+
+    # Verifica se algum registro foi afetado (se o livro foi encontrado e excluído).
+    if cursor.rowcount == 0:
+        # Retorna um erro 400 (Bad Request) se o livro não foi encontrado.
+        return jsonify({"erro": "Livro não encontrado"}), 400
+
+    # Retorna uma mensagem de sucesso com o código 200 (OK).
+    return jsonify({"menssagem": "Livro excluído com sucesso"}), 200
+
+
+# Ponto de entrada da aplicação: inicia o servidor Flask em modo debug.
+if __name__ == "__main__":
     app.run(debug=True)
